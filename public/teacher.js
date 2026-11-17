@@ -43,7 +43,7 @@ async function poll(){
  if(!room||!hostToken){pollActive=false;return}
  try{const data=await api('teacher/state',{room,host_token:hostToken});render(data);status('실시간 연결됨',true)}
  catch(e){status('연결 재시도 중',false);$('actionErr').textContent=e.message}
- setTimeout(poll,650);
+ setTimeout(poll,document.hidden?1800:950);
 }
 async function action(type,id){
  let msg='';if(type==='reset')msg='현재 경기를 초기화하고 참가자는 유지할까요?';if(type==='kick')msg='이 학생을 게임방에서 퇴장시킬까요?';if(type==='start')msg='입장한 '+$('headcount').textContent.split(' ')[0]+'명의 경기를 시작할까요?';

@@ -3,7 +3,16 @@ let room = new URL(location.href).searchParams.get('room')?.trim().toUpperCase()
 let token = null, playerId=null, selectedColor='#328bb8', latestState=null, listening=false, lastPhase='', lastRound=0, lastItemIndex=-1, timerHandle=null, polling=false;
 $('roomInput').value=room;
 function connection(text,bad=false){$('netStatus').textContent=text;$('netStatus').style.color=bad?'#b44f42':'#547a74'}
-function showSection(s){setHidden('entry',s!=='entry');setHidden('studentLobby',s!=='lobby');setHidden('race18ui',s!=='game');setHidden('studentResults',s!=='result');if(s==='game')window.RaceGame?.resize()}
+let visibleSection='';
+function showSection(s){
+ // CRITICAL: resizing a canvas clears/reallocates its backing store.
+ // Never resize it every time a polling response arrives.
+ if(visibleSection===s)return;
+ visibleSection=s;
+ setHidden('entry',s!=='entry');setHidden('studentLobby',s!=='lobby');
+ setHidden('race18ui',s!=='game');setHidden('studentResults',s!=='result');
+ if(s==='game')window.RaceGame?.resize();
+}
 function save(){localStorage.setItem('balance-v19-participant-'+room,JSON.stringify({token,playerId}))}
 function clearSession(){localStorage.removeItem('balance-v19-participant-'+room);token=null;playerId=null}
 async function join(){
@@ -45,7 +54,10 @@ async function poll(){
  if(!token||!room){polling=false;return}
  try{const data=await api('student/state',{room,token});onState(data)}
  catch(e){connection('연결 재시도 중',true);if(/만료|인증/.test(e.message)){clearSession();showSection('entry');$('joinError').textContent=e.message;polling=false;return}}
- timerHandle=setTimeout(poll,latestState&&['countdown','running'].includes(latestState.phase)?220:650);
+ // About 3 state requests/sec during races; the renderer interpolates between snapshots.
+ // Avoid saturating mobile devices / a Free instance with excessive polling.
+ const playing=latestState&&['countdown','running'].includes(latestState.phase);
+ timerHandle=setTimeout(poll,document.hidden?1400:(playing?380:950));
 }
 async function move(direction){
  if(!latestState||latestState.phase!=='running'||latestState.me.finished)return;
