@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: health-balance-race-classroom
+    runtime: python
+    plan: free
+    region: singapore
+    buildCommand: pip install -r requirements.txt
+    startCommand: python server.py
+    healthCheckPath: /health
+    autoDeployTrigger: commit
