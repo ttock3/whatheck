@@ -6,7 +6,8 @@ const LENGTH=16800,VIEW=1040,DEPTH=190;
 let W=390,H=720,DPR=1,G=null,latest=null,lastRender=performance.now(),lastSnapAt=0,lastStage=0,localLane=null,localSide=1,pendingUntil=0,noticeUntil=0,speedUntil=0;
 let rankSignature='',routeDots=new Map();
 // Game time and view time are deliberately separate: snapshots must NEVER restart a running gait.
-let motionPhase=0, frameMinMs=1000/60, slowFrames=0, goodFrames=0;
+// A fixed 30fps cadence is more consistent on 60Hz iPads than switching 60↔30fps.
+let motionPhase=0, frameMinMs=1000/30;
 const spriteCache=new Map();
 
 function stage(r){return Math.min(2,Math.floor((r.dist||0)/(LENGTH/3)))}
@@ -133,7 +134,18 @@ function cards(){
 }
 function gate(z,finish){if(z<0||z>VIEW-30)return;const p=proj(z),q=proj(Math.min(VIEW,z+38)),w=p.half*2/10;for(let i=0;i<10;i++)poly([[p.x-p.half+i*w,p.y],[p.x-p.half+(i+1)*w,p.y],[q.x-q.half+(i+1)*2*q.half/10,q.y],[q.x-q.half+i*2*q.half/10,q.y]],i%2?'#1a333d':'#fff8e8');if(!finish)return;const h=p.half*.96,s=.3+p.d,y=p.y-125*s;for(const side of [-1,1])box(p.x+side*h-5*s,y,10*s,p.y-y,2,'#f0f3e8');box(p.x-h,y-29*s,2*h,32*s,4,'#1a3944');txt('FINISH',p.x,y-12*s,Math.max(13,23*s),'#fff',950);}
 function draw(){if(!G)return;c.clearRect(0,0,W,H);bg();road();trees();const start=DEPTH-G.dist;if(start>0&&start<VIEW-40)gate(start,false);for(const b of G.bots){const z=DEPTH+b.dist-G.dist;if(z<20||z>VIEW-60)continue;const p=proj(z),formation=[.12,.44,.76,1.24,1.56,1.88][b.id%6],blend=Math.min(1,G.elapsed/1.8),renderSide=formation*(1-blend)+b.side*blend,x=xAt(z,renderSide),s=.23+p.d*.60;actor(x,p.y,s,b.color,b.finish!==null,.43,b.id*1.3);box(x-28,p.y-s*104-22,56,20,5,'#1d4047ca');txt(b.name,x,p.y-s*104-12,11,'#fff')}cards();const finish=DEPTH+LENGTH-G.dist;if(finish<=VIEW-30)gate(finish,true);const p=proj(DEPTH);if(G.phase==='run'&&factor(G)===1&&G.penalty<=0){c.fillStyle='#c9ffe722';c.beginPath();c.ellipse(xAt(DEPTH,G.side),p.y-48,40,70,0,0,2*Math.PI);c.fill()}actor(xAt(DEPTH,G.side),p.y,.87,G.shirt,G.phase!=='run',1)}
-function resize(){let r=cv.getBoundingClientRect();W=Math.max(280,r.width||390);H=Math.max(520,r.height||700);DPR=Math.min(1.3,window.devicePixelRatio||1,Math.sqrt(425000/(W*H)));cv.width=Math.round(W*DPR);cv.height=Math.round(H*DPR);c.setTransform(DPR,0,0,DPR,0,0);draw()}
+function resize(){
+ const r=cv.getBoundingClientRect();
+ // Hidden game: do not resize to arbitrary fallback dimensions.
+ if(r.width<1||r.height<1)return;
+ const w=r.width,h=r.height,dpr=Math.min(1.3,window.devicePixelRatio||1,Math.sqrt(425000/(w*h)));
+ const pw=Math.round(w*dpr),ph=Math.round(h*dpr);
+ // Canvas width/height writes reallocate the backing store and produce a visible hiccup.
+ if(cv.width===pw&&cv.height===ph&&Math.abs(W-w)<.5&&Math.abs(H-h)<.5)return;
+ W=w;H=h;DPR=dpr;
+ cv.width=pw;cv.height=ph;c.setTransform(DPR,0,0,DPR,0,0);
+ draw();
+}
 function frame(now){
  requestAnimationFrame(frame);
  if(!G||root.classList.contains('hidden')||document.hidden){lastRender=now;return}
@@ -146,29 +158,26 @@ function frame(now){
   const age=Math.min(1.5,Math.max(0,(now-lastSnapAt)/1000));
   const target=Math.min(LENGTH-.01,G.distTarget+G.speed*age);
   // Move forward every frame; reconcile gently, not via 380ms snap/rewind.
-  const raw=G.speed*dt,correction=(target-G.dist)*dt*1.9;
-  G.dist=Math.min(LENGTH-.01,G.dist+Math.max(0,raw+Math.max(-raw*.65,Math.min(raw*.65,correction))));
+  const raw=G.speed*dt,correction=(target-G.dist)*dt*1.05;
+  G.dist=Math.min(LENGTH-.01,G.dist+Math.max(0,raw+Math.max(-raw*.30,Math.min(raw*.30,correction))));
   localSide+=((localLane??latest?.me.lane??1)-localSide)*Math.min(1,dt*12);
   G.side=localSide;
   for(const b of G.bots){
    if(b.finish){b.dist=b.targetDist;continue}
    const t=Math.min(LENGTH-.01,b.targetDist+b.speed*age);
-   const step=b.speed*dt,adj=(t-b.dist)*dt*1.9;
-   b.dist=Math.min(LENGTH-.01,b.dist+Math.max(0,step+Math.max(-step*.65,Math.min(step*.65,adj))));
+   const step=b.speed*dt,adj=(t-b.dist)*dt*1.05;
+   b.dist=Math.min(LENGTH-.01,b.dist+Math.max(0,step+Math.max(-step*.30,Math.min(step*.30,adj))));
    b.side+=(b.targetSide-b.side)*Math.min(1,dt*12);
   }
  }else{G.dist=G.distTarget;G.side=latest?.me.side??G.side}
- const begin=performance.now();
  draw();
- const cost=performance.now()-begin;
- // Degrade gracefully to 30Hz only on genuinely expensive devices.
- if(cost>13){slowFrames++;goodFrames=0}
- else{goodFrames++;slowFrames=Math.max(0,slowFrames-1)}
- if(slowFrames>=12){frameMinMs=1000/30;slowFrames=0}
- if(goodFrames>=100&&frameMinMs>20){frameMinMs=1000/60;goodFrames=0}
  const message=document.getElementById('g19notice');
  message.classList.toggle('show',now<noticeUntil&&G.phase==='run');
  document.getElementById('g19speedNotice').classList.toggle('hidden',!(now<speedUntil&&G.phase==='run'));
 }
-window.RaceGame={reset,sync,resize,setLocalLane,getLane,diagnostics:()=>({DPR,canvasWidth:cv.width,canvasHeight:cv.height,frameMinMs,cacheSize:spriteCache.size,dist:G?.dist,motionPhase,phase:G?.phase})};window.addEventListener('resize',resize);resize();requestAnimationFrame(frame);
+window.RaceGame={reset,sync,resize,setLocalLane,getLane,diagnostics:()=>({DPR,canvasWidth:cv.width,canvasHeight:cv.height,frameMinMs,cacheSize:spriteCache.size,dist:G?.dist,motionPhase,phase:G?.phase})};
+window.addEventListener('resize',resize);
+// Mobile address bar/orientation can change the available height without a window resize event.
+if('ResizeObserver' in window){new ResizeObserver(()=>resize()).observe(document.getElementById('g19stage'))}
+resize();requestAnimationFrame(frame);
 })();

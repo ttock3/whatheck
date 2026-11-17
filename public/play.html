@@ -1,5 +1,46 @@
-<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"><meta name="theme-color" content="#117f67"><title>건강 밸런스 레이스 | 학생 참가</title><link rel="stylesheet" href="/public/base.css?v=19.2"><link rel="stylesheet" href="/public/v18-game.css?v=19.2"><style>
-#race18ui .stage{height:clamp(690px,87svh,870px)}
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#117f67"><title>건강 밸런스 레이스 | 학생 참가</title><link rel="stylesheet" href="/public/base.css?v=19.3"><link rel="stylesheet" href="/public/v18-game.css?v=19.3"><style>
+/* v19.3: keep both energy meter and lane buttons on a single screen. */
+#race18ui{
+ position:fixed;z-index:50;inset:0;
+ width:min(100%,520px);max-width:520px;
+ height:100vh;height:100dvh;
+ margin:0 auto;
+ padding:max(5px,env(safe-area-inset-top)) 6px max(5px,env(safe-area-inset-bottom));
+ display:flex;flex-direction:column;gap:0;
+ overflow:hidden;background:#eaf3ee;
+ overscroll-behavior:contain;
+}
+#race18ui .stage{
+ height:auto;flex:1 1 auto;min-height:0;
+ border-radius:13px;
+}
+#race18ui .buttons{flex:0 0 auto;margin-top:6px;gap:8px}
+#race18ui .move{
+ height:clamp(50px,7.5dvh,64px);min-height:50px;
+ font-size:clamp(16px,4vw,19px);box-shadow:0 3px #143045;
+}
+#race18ui .helper{display:none}
+#race18ui .hud{top:7px;left:7px;right:7px;padding:7px 9px 8px;border-radius:11px}
+#race18ui .hrow{grid-template-columns:minmax(0,1fr) minmax(116px,1.4fr) minmax(0,1fr);font-size:14px;gap:3px}
+#race18ui .status{padding:5px 2px;font-size:13px;box-shadow:none}
+#race18ui .status small{font-size:9px}
+#race18ui .meter{height:11px;margin-top:7px}
+#race18ui .needle{top:-4px;height:19px}
+#race18ui .leader{top:94px;left:10px}
+@media(max-height:720px){
+ #race18ui .leader{top:85px;left:9px}
+ #race18ui .myrank{font-size:24px;margin-bottom:3px}
+ #race18ui .leader h3{font-size:11px;margin-bottom:2px}
+ #race18ui .rankrow{height:19px;font-size:11px}
+ #race18ui .route{bottom:7px;padding:5px 9px 8px}
+ #race18ui .message{bottom:68px}
+ #race18ui .hud{padding:6px 8px 7px}
+}
+@media(max-width:350px){
+ #race18ui .hrow{font-size:12px;grid-template-columns:minmax(0,1fr) minmax(115px,1.3fr) minmax(0,1fr)}
+ #race18ui .status{font-size:12px}
+}
+
 #race18ui .raceOverlay{position:absolute;z-index:9;inset:0;background:#123d46c7;display:grid;place-items:center;padding:18px;backdrop-filter:blur(4px)}
 #race18ui .raceOverlay .messageBox{width:min(340px,90%);background:#fffffff7;border-radius:20px;padding:25px 16px;text-align:center}
 #race18ui .raceOverlay h2{font-size:28px;margin:8px 0;color:#164249}
@@ -7,7 +48,7 @@
 #race18ui .raceOverlay p{color:#5e7a7c;font-size:13px;line-height:1.7}
 #entry,#studentLobby,#studentResults{max-width:520px;margin:auto}.introbox{padding:30px 24px}.lobbyBig{font-size:56px;font-weight:950;color:#148068;line-height:1}.joinButtons{display:flex;justify-content:center;gap:12px;margin:16px 0}.joinColor{width:46px;height:46px;border-radius:50%;background:var(--c);border:4px solid white;box-shadow:0 0 0 1px #aecfc2}.joinColor.selected{outline:2px solid #225157;outline-offset:2px}.noticeLine{min-height:21px;font-size:13px;color:#b25e4a}.resultsRow{display:flex;align-items:center;gap:12px;padding:11px 9px;border-radius:11px;background:#f0f6f3;margin:6px 0;font-weight:800}.resultsRow.me{background:#d7f4e8;color:#107c65}.resultsRow .position{width:30px}.resultsRow .resultName{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}.resultsRow .resultTime{font-variant-numeric:tabular-nums;color:#6d8384;font-size:12px}
 </style></head><body>
-<header style="max-width:520px;margin:0 auto;padding:11px 14px 2px" class="topline"><div class="brand">BALANCE RACE / CLASSROOM V19.2</div><small id="netStatus" class="muted">연결 준비</small></header>
+<header style="max-width:520px;margin:0 auto;padding:11px 14px 2px" class="topline"><div class="brand">BALANCE RACE / CLASSROOM V19.3</div><small id="netStatus" class="muted">연결 준비</small></header>
 <main style="padding:8px 8px 24px">
 <section id="entry" class="panel introbox" style="margin-top:15px;text-align:center"><h1 class="title" style="font-size:29px">건강 밸런스 레이스</h1><p class="muted">선생님이 게임을 시작할 때까지 기다려요. 참가할 별명과 캐릭터 색을 정해주세요.</p><label for="roomInput" style="display:block;text-align:left;font-weight:850;font-size:12px;margin-bottom:6px">게임방 코드</label><input id="roomInput" class="input" placeholder="QR로 접속하면 자동 입력" maxlength="6" autocomplete="off" style="text-align:center;font-weight:900;letter-spacing:2px"><label for="nickInput" style="display:block;text-align:left;font-weight:850;font-size:12px;margin-top:15px;margin-bottom:6px">닉네임</label><input id="nickInput" class="input" placeholder="닉네임을 적어주세요." maxlength="10" autocomplete="off"><div class="joinButtons" id="joinColors"><button class="joinColor selected" style="--c:#328bb8" data-color="#328bb8" aria-label="파랑"></button><button class="joinColor" style="--c:#db965b" data-color="#db965b" aria-label="주황"></button><button class="joinColor" style="--c:#816cc7" data-color="#816cc7" aria-label="보라"></button><button class="joinColor" style="--c:#49a68a" data-color="#49a68a" aria-label="초록"></button></div><button id="join" class="button full">참가하기</button><p id="joinError" class="error" role="alert"></p><p class="muted small">총 7명까지 참여할 수 있어요. 실명보다 별명을 사용해 주세요.</p></section>
 <section id="studentLobby" class="panel introbox hidden" style="margin-top:15px;text-align:center"><div class="brand">WAITING ROOM</div><h1 class="title">참가 완료!</h1><div id="lobbyName" class="lobbyBig">—</div><p class="muted">선생님이 게임을 시작하면 모두 함께 출발해요.</p><div class="tag" id="lobbyCount">1 / 7명 참가</div><div style="margin-top:19px" id="lobbyList"></div><p class="intro-note">휴대폰 화면을 세로로 두고 좌우 이동 버튼을 누를 준비를 해주세요.</p></section>
@@ -22,4 +63,4 @@
 <div class="buttons"><button class="move" id="g19left">← 왼쪽</button><button class="move" id="g19right">오른쪽 →</button></div><p class="helper">화면을 좌우로 밀어도 이동할 수 있어요.</p>
 </section>
 <section id="studentResults" class="panel hidden" style="margin-top:15px;text-align:center"><div style="font-size:32px;font-weight:1000;color:#138069">FINISH!</div><h2>최종 순위</h2><p class="muted">선생님이 공개한 기록입니다.</p><div id="resultsList"></div><p class="muted small">다음 경기 진행 시 대기실로 자동 이동합니다.</p></section>
-</main><script src="/public/common.js?v=19.2"></script><script src="/public/player.js?v=19.2"></script><script src="/public/game-view.js?v=19.2"></script></body></html>
+</main><script src="/public/common.js?v=19.3"></script><script src="/public/player.js?v=19.3"></script><script src="/public/game-view.js?v=19.3"></script></body></html>
