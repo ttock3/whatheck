@@ -24,6 +24,8 @@ DISTANCE = 16800.0
 START_DELAY = 3.5
 BASE_SPEED = 112.0
 ROW_GAP = 560
+# Give students a calm run-in before the first item becomes visible.
+FIRST_ITEM_AT = 1340
 PENALTY_TIME = 2.2
 COLORS = ('#328bb8', '#db965b', '#816cc7', '#49a68a')
 PERMUTATIONS = ((1,0,2), (0,2,1), (2,1,0), (1,2,0), (2,0,1), (0,1,2))
@@ -50,7 +52,7 @@ def permutation(seed, index):
 
 def make_rows(seed):
     out = []
-    for i, at in enumerate(range(670, int(DISTANCE) - 470, ROW_GAP)):
+    for i, at in enumerate(range(FIRST_ITEM_AT, int(DISTANCE) - 470, ROW_GAP)):
         pack = [ITEMS[k][(i + (1 if k == 1 else 2 if k == 2 else 0)) % len(ITEMS[k])] for k in range(3)]
         out.append({'at': at, 'items': [{'kind': k, 'item': pack[k]} for k in permutation(seed, i)]})
     return out
