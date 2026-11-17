@@ -3,6 +3,7 @@
 (function(){
 const root=document.getElementById('race18ui'),cv=document.getElementById('g19canvas'),c=cv.getContext('2d');if(!root||!c)return;
 const LENGTH=16800,VIEW=1040,DEPTH=190;
+const clamp=(x,min,max)=>Math.max(min,Math.min(max,x));
 let W=390,H=720,DPR=1,G=null,latest=null,lastRender=performance.now(),lastSnapAt=0,lastStage=0,localLane=null,localSide=1,pendingUntil=0,noticeUntil=0,speedUntil=0;
 let rankSignature='',routeDots=new Map();
 // Game time and view time are deliberately separate: snapshots must NEVER restart a running gait.
@@ -59,13 +60,18 @@ function sendUI(state){
 function reset(){G=null;latest=null;lastStage=0;localLane=null;pendingUntil=0;lastSnapAt=0;motionPhase=0;rankSignature='';routeDots.clear();document.getElementById('g19bar').replaceChildren();document.getElementById('g19notice').classList.remove('show');document.getElementById('g19speedNotice').classList.add('hidden')}
 function sync(s){
  const me=s.me;latest=s;lastSnapAt=performance.now();
- if(!G){localSide=me.side;G={dist:me.distance,elapsed:s.elapsed,side:me.side,shirt:me.color,phase:'intro',energy:me.energy,penalty:me.penalty,rows:[],bots:[],lastItem:me.last_item?.index??-1}}
+ if(!G){localSide=me.side;G={dist:me.distance,visualSpeed:me.speed||0,elapsed:s.elapsed,side:me.side,shirt:me.color,phase:'intro',energy:me.energy,penalty:me.penalty,rows:[],bots:[],lastItem:me.last_item?.index??-1}}
+ const previousPhase=G.phase;
  G.distTarget=me.distance;G.speed=me.speed;G.energy=me.energy;G.penalty=me.penalty;G.shirt=me.color;G.phase=s.phase==='running'&&!me.finished?'run':me.finished?'wait':'intro';
+ if(G.phase==='run'&&previousPhase!=='run'){
+   G.visualSpeed=me.speed;
+   G.dist=Math.max(G.dist,me.distance);
+ }
  G.rows=s.rows.map(row=>({z:row.at,taken:false,options:row.items.map(it=>({type:it.kind,item:it.item}))}));
  // Keep opponents between network snapshots to prevent 380ms position jumps.
  const oldBots=new Map((G.bots||[]).map(b=>[b.key,b]));
  G.bots=s.players.filter(p=>p.id!==me.id&&p.distance!==null).map((p,i)=>{
-  const b=oldBots.get(p.id)||{key:p.id,name:p.name,color:p.color,dist:p.distance,side:p.side,id:i};
+  const b=oldBots.get(p.id)||{key:p.id,name:p.name,color:p.color,dist:p.distance,visualSpeed:p.speed||0,side:p.side,id:i};
   b.name=p.name;b.color=p.color;b.id=i;b.speed=p.speed;
   b.targetDist=p.distance;b.targetSide=p.side;b.finish=p.finished?1:null;
   return b;
@@ -128,7 +134,10 @@ function cards(){
   for(let j=0;j<3;j++){
    const option=row.options[j],x=xAt(z,j),y=p.y-h*.73;
    const sprite=cachedSprite(option);
-   c.drawImage(sprite,x-w/2,y-h/2,w,h);
+   // Quantize transformed texture edges to device pixels to prevent subpixel shimmer.
+   const x0=Math.round((x-w/2)*DPR)/DPR,y0=Math.round((y-h/2)*DPR)/DPR;
+   const x1=Math.round((x+w/2)*DPR)/DPR,y1=Math.round((y+h/2)*DPR)/DPR;
+   c.drawImage(sprite,x0,y0,Math.max(1/DPR,x1-x0),Math.max(1/DPR,y1-y0));
   }
  }
 }
@@ -157,16 +166,28 @@ function frame(now){
   motionPhase+=dt*(12.5+stage(G)*1.2);
   const age=Math.min(1.5,Math.max(0,(now-lastSnapAt)/1000));
   const target=Math.min(LENGTH-.01,G.distTarget+G.speed*age);
-  // Move forward every frame; reconcile gently, not via 380ms snap/rewind.
-  const raw=G.speed*dt,correction=(target-G.dist)*dt*1.05;
-  G.dist=Math.min(LENGTH-.01,G.dist+Math.max(0,raw+Math.max(-raw*.30,Math.min(raw*.30,correction))));
+  // Camera velocity is eased continuously: network snapshots must not cause visible jolts.
+  // Keep the camera near the authoritative server while avoiding sudden speed steps.
+  const error=target-G.dist;
+  const bound=Math.max(20,G.speed*.22);
+  const desiredSpeed=Math.max(0,G.speed+clamp(error*1.15,-bound,bound));
+  if(Math.abs(error)>850){G.dist=target;G.visualSpeed=G.speed;} // recovery after long sleep
+  else{
+   G.visualSpeed+=(desiredSpeed-G.visualSpeed)*Math.min(1,dt*4.2);
+   G.dist=Math.min(LENGTH-.01,G.dist+Math.max(0,G.visualSpeed)*dt);
+  }
   localSide+=((localLane??latest?.me.lane??1)-localSide)*Math.min(1,dt*12);
   G.side=localSide;
   for(const b of G.bots){
-   if(b.finish){b.dist=b.targetDist;continue}
-   const t=Math.min(LENGTH-.01,b.targetDist+b.speed*age);
-   const step=b.speed*dt,adj=(t-b.dist)*dt*1.05;
-   b.dist=Math.min(LENGTH-.01,b.dist+Math.max(0,step+Math.max(-step*.30,Math.min(step*.30,adj))));
+   const t=Math.min(LENGTH,b.finish?b.targetDist:b.targetDist+b.speed*age);
+   const error=t-b.dist,limit=Math.max(20,b.speed*.25);
+   const goal=b.finish?0:Math.max(0,b.speed+clamp(error*1.15,-limit,limit));
+   if(Math.abs(error)>850){b.dist=t;b.visualSpeed=b.speed;}
+   else{
+    b.visualSpeed+=(goal-b.visualSpeed)*Math.min(1,dt*4.2);
+    b.dist=Math.min(LENGTH,b.dist+Math.max(0,b.visualSpeed)*dt);
+    if(b.finish&&Math.abs(t-b.dist)<1){b.dist=t;b.visualSpeed=0;}
+   }
    b.side+=(b.targetSide-b.side)*Math.min(1,dt*12);
   }
  }else{G.dist=G.distTarget;G.side=latest?.me.side??G.side}
@@ -175,7 +196,7 @@ function frame(now){
  message.classList.toggle('show',now<noticeUntil&&G.phase==='run');
  document.getElementById('g19speedNotice').classList.toggle('hidden',!(now<speedUntil&&G.phase==='run'));
 }
-window.RaceGame={reset,sync,resize,setLocalLane,getLane,diagnostics:()=>({DPR,canvasWidth:cv.width,canvasHeight:cv.height,frameMinMs,cacheSize:spriteCache.size,dist:G?.dist,motionPhase,phase:G?.phase})};
+window.RaceGame={reset,sync,resize,setLocalLane,getLane,diagnostics:()=>({DPR,canvasWidth:cv.width,canvasHeight:cv.height,frameMinMs,cacheSize:spriteCache.size,dist:G?.dist,visualSpeed:G?.visualSpeed,serverTarget:G?.distTarget,visibleItems:G?.rows.filter(row=>{const z=DEPTH+row.z-(G?.dist||0);return z>=DEPTH-20&&z<=VIEW-28}).length,motionPhase,phase:G?.phase})};
 window.addEventListener('resize',resize);
 // Mobile address bar/orientation can change the available height without a window resize event.
 if('ResizeObserver' in window){new ResizeObserver(()=>resize()).observe(document.getElementById('g19stage'))}
